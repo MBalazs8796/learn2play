@@ -2,6 +2,8 @@ import pygame, sys
 from pygame.locals import *
 import random
 import math
+
+from itertools import compress
  
 pygame.init()
  
@@ -34,19 +36,50 @@ pygame.display.set_caption("Game")
  
  
 class Enemy(pygame.sprite.Sprite):
-      def __init__(self):
+      def __init__(self, player, movement_speed):
         super().__init__()
         self.surf = pygame.Surface((ENEMY_SIZE, ENEMY_SIZE))
         self.surf.fill(RED)
         self.rect = pygame.Rect((150, 150), (ENEMY_SIZE, ENEMY_SIZE))
         self.rect.center = (160, 160)
+        self.target_player = player
+        self.speed = movement_speed
  
       def move(self):
-        pass
-        #self.rect.move_ip(0,10)
-        #if (self.rect.bottom > 600):
-        #    self.rect.top = 0
-        #    self.rect.center = (random.randint(30, 370), 0)
+        def euc_distance_tuples(v1, v2):
+            x1, y1 = v1
+            x2, y2 = v2
+            return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+        def get_shit_towards_thing(thing):
+            other_pos = thing.get_position()
+            shift_x = other_pos[0] - self.rect.center[0]
+            shift_x = math.copysign(min(abs(shift_x), self.speed), shift_x)
+            shift_y = other_pos[1] - self.rect.center[1]
+            shift_y = math.copysign(min(abs(shift_y), self.speed), shift_y)
+            return (shift_x, shift_y)
+
+        if not any([x.active for x in self.target_player.fired_projectiles]):
+            # move towards the player
+            shift = get_shit_towards_thing(self.target_player)
+        else:
+            #move away from the closest projectile
+            min_distance = 9999999
+            index = -1
+            for i, incoming_proj in enumerate(self.target_player.fired_projectiles):
+                if not incoming_proj.active:
+                    continue
+                dist = euc_distance_tuples(self.rect.center, incoming_proj.get_position())
+                if min_distance > dist:
+                    min_distance = dist
+                    index = i
+            if index == -1:
+                raise Exception("Minimum distance calculation errored")
+            shift_x, shift_y = get_shit_towards_thing(self.target_player.fired_projectiles[index])
+            shift = shift_x * -1, shift_y * -1
+        self.rect.move_ip(shift)
+        
+
  
       def draw(self, surface):
         surface.blit(self.surf, self.rect) 
@@ -70,6 +103,9 @@ class Player(pygame.sprite.Sprite):
                 p
                )
  
+    def get_position(self):
+        return self.rect.center
+
     def update(self):
         pressed_keys = pygame.key.get_pressed()
         movement_vector = pygame.Vector2()
@@ -133,6 +169,9 @@ class Projectile(pygame.sprite.Sprite):
     def set_position(self, position):
         self.rect.center = position
 
+    def get_position(self):
+        return self.rect.center
+
     def draw(self, surface):
         surface.blit(self.surf, self.rect)
 
@@ -144,9 +183,8 @@ class Projectile(pygame.sprite.Sprite):
             self.active = False
             self.active_time = 0
 
-
 P1 = Player()
-E1 = Enemy()
+E1 = Enemy(P1, 3)
 i = 0
 while True:     
     for event in pygame.event.get():              
