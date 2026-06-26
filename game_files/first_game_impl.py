@@ -1,6 +1,7 @@
 import pygame, sys
 from pygame.locals import *
 import random
+import math
  
 pygame.init()
  
@@ -21,6 +22,7 @@ SCREEN_HEIGHT = 600
 PLAYER_SIZE = 30
 PLAYER_PROJECTILE_LIFETIME = 50
 PLAYER_PROJECTILE_SPEED = 2
+PLAYER_RATE_OF_FIRE = 50 # bullet per second
 
 ENEMY_SIZE = 20
 
@@ -57,8 +59,16 @@ class Player(pygame.sprite.Sprite):
         self.surf.fill((128,255,40))
         self.rect = pygame.Rect((20, 50), (PLAYER_SIZE, PLAYER_SIZE))
         self.rect.center = (160, 520)
-        self.fired_projectile = None
         self.movement_speed = 5
+        self.fire_delay_remaining = 0
+        self.proj_count = max(math.ceil((PLAYER_PROJECTILE_LIFETIME * PLAYER_RATE_OF_FIRE) / 200), 1)
+        self.fired_projectiles = []
+        for _ in range(self.proj_count):
+            p = Projectile(BLUE, PLAYER_PROJECTILE_SPEED, PLAYER_PROJECTILE_LIFETIME, self.rect.center)
+            p.active = False
+            self.fired_projectiles.append(
+                p
+               )
  
     def update(self):
         pressed_keys = pygame.key.get_pressed()
@@ -79,7 +89,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.move_ip(movement_vector * self.movement_speed)
 
 
-        if self.fired_projectile is None:
+        if self.fire_delay_remaining <= 0:
             fire_direction_vector = pygame.Vector2()
             if pressed_keys[K_UP]:
                 fire_direction_vector.y += -1
@@ -90,25 +100,39 @@ class Player(pygame.sprite.Sprite):
             if pressed_keys[K_RIGHT]:
                 fire_direction_vector.x += 1
             if fire_direction_vector.x != 0 or fire_direction_vector.y != 0:
-                self.fired_projectile = Projectile(BLUE, PLAYER_PROJECTILE_SPEED, PLAYER_PROJECTILE_LIFETIME, self.rect.center, fire_direction_vector + movement_vector)
+                i = 0
+                while  i < self.proj_count and self.fired_projectiles[i].active:
+                    i += 1
+                if i < self.proj_count:
+                    current_proj = self.fired_projectiles[i]
+                    current_proj.active = True
+                    current_proj.set_direction(fire_direction_vector + movement_vector)
+                    current_proj.set_position(self.rect.center)
+                    self.fire_delay_remaining =  max(1, math.floor(60 - PLAYER_RATE_OF_FIRE))
+        else:
+            self.fire_delay_remaining -= 1
  
     def draw(self, surface):
-        if self.fired_projectile and not self.fired_projectile.active:
-            self.fired_projectile = None
         surface.blit(self.surf, self.rect)     
 
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, color, speed, lifetime, position, direction) -> None:
+    def __init__(self, color, speed, lifetime, position) -> None:
         self.surf = pygame.Surface((PROJECTILE_SIZE, PROJECTILE_SIZE))
         self.surf.fill(color)
         self.rect = pygame.Rect((20, 50), (PROJECTILE_SIZE, PROJECTILE_SIZE))
         self.rect.center = position
         self.speed = speed
         self.max_lifetime = lifetime
-        self.direction = direction
+        self.direction = (0,0)
         self.active = True
         self.active_time = 0
     
+    def set_direction(self, direction):
+        self.direction = direction
+
+    def set_position(self, position):
+        self.rect.center = position
+
     def draw(self, surface):
         surface.blit(self.surf, self.rect)
 
@@ -118,6 +142,7 @@ class Projectile(pygame.sprite.Sprite):
             self.rect.move_ip((self.direction[0] * self.speed, self.direction[1] * self.speed))
         else:
             self.active = False
+            self.active_time = 0
 
 
 P1 = Player()
@@ -134,9 +159,10 @@ while True:
     DISPLAYSURF.fill(WHITE)
     P1.draw(DISPLAYSURF)
     E1.draw(DISPLAYSURF)
-    if P1.fired_projectile:
-        P1.fired_projectile.update()
-        P1.fired_projectile.draw(DISPLAYSURF)
+    for p in  P1.fired_projectiles:
+        if p.active:
+            p.update()
+            p.draw(DISPLAYSURF)
          
     pygame.display.update()
     FramePerSec.tick(FPS)
