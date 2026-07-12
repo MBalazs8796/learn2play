@@ -22,11 +22,16 @@ SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 600
 
 PLAYER_SIZE = 30
-PLAYER_PROJECTILE_LIFETIME = 50
-PLAYER_PROJECTILE_SPEED = 2
-PLAYER_RATE_OF_FIRE = 50 # bullet per second
+PLAYER_PROJECTILE_LIFETIME = 100
+PLAYER_PROJECTILE_SPEED = 1
+PLAYER_RATE_OF_FIRE = 40 # bullet per second
+PLAYER_MOVEMENT_SPEED = 5
 
 ENEMY_SIZE = 20
+ENEMY_PROJECTILE_LIFETIME = 100
+ENEMY_PROJECTILE_SPEED = 1
+ENEMY_RATE_OF_FIRE = 40
+ENEMY_SPEED = 3
 
 PROJECTILE_SIZE = 5
 
@@ -36,7 +41,7 @@ pygame.display.set_caption("Game")
  
  
 class Enemy(pygame.sprite.Sprite):
-      def __init__(self, player, movement_speed):
+    def __init__(self, player, movement_speed):
         super().__init__()
         self.surf = pygame.Surface((ENEMY_SIZE, ENEMY_SIZE))
         self.surf.fill(RED)
@@ -44,24 +49,34 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.center = (160, 160)
         self.target_player = player
         self.speed = movement_speed
- 
-      def move(self):
+        self.fire_delay_remaining = 0
+        self.fired_projectiles = list()
+        self.proj_count = max(math.ceil((ENEMY_PROJECTILE_LIFETIME * ENEMY_RATE_OF_FIRE) / 200), 1)
+        for _ in range(self.proj_count):
+            p = Projectile(BLACK, ENEMY_PROJECTILE_SPEED, ENEMY_PROJECTILE_LIFETIME, self.rect.center)
+            p.active = False
+            self.fired_projectiles.append(
+                p
+               )
+
+    def get_shift_towards_thing(self, thing):
+        other_pos = thing.get_position()
+        shift_x = other_pos[0] - self.rect.center[0]
+        shift_x = math.copysign(min(abs(shift_x), self.speed), shift_x)
+        shift_y = other_pos[1] - self.rect.center[1]
+        shift_y = math.copysign(min(abs(shift_y), self.speed), shift_y)
+        return (shift_x, shift_y)
+    
+    def move(self):
         def euc_distance_tuples(v1, v2):
             x1, y1 = v1
             x2, y2 = v2
             return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-        def get_shift_towards_thing(thing):
-            other_pos = thing.get_position()
-            shift_x = other_pos[0] - self.rect.center[0]
-            shift_x = math.copysign(min(abs(shift_x), self.speed), shift_x)
-            shift_y = other_pos[1] - self.rect.center[1]
-            shift_y = math.copysign(min(abs(shift_y), self.speed), shift_y)
-            return (shift_x, shift_y)
 
         if not any([x.active for x in self.target_player.fired_projectiles]):
             # move towards the player
-            shift = get_shift_towards_thing(self.target_player)
+            shift = self.get_shift_towards_thing(self.target_player)
         else:
             #move away from the closest projectile
             min_distance = 9999999
@@ -75,7 +90,7 @@ class Enemy(pygame.sprite.Sprite):
                     index = i
             if index == -1:
                 raise Exception("Minimum distance calculation errored")
-            shift_x, shift_y = get_shift_towards_thing(self.target_player.fired_projectiles[index])
+            shift_x, shift_y = self.get_shift_towards_thing(self.target_player.fired_projectiles[index])
             shift = shift_y, shift_x * -1 # dodge left, cuz vector is rotated 90 degrees
 
         shift_x, shift_y = shift
@@ -88,10 +103,23 @@ class Enemy(pygame.sprite.Sprite):
         elif self.rect.right > SCREEN_WIDTH:
             shift = -1, shift_y
         self.rect.move_ip(shift)
+    
+        if self.fire_delay_remaining <= 0:
+            fire_direction_vector = pygame.Vector2(self.get_shift_towards_thing(self.target_player))
+            i = 0
+            while  i < self.proj_count and self.fired_projectiles[i].active:
+                i += 1
+            if i < self.proj_count:
+                current_proj = self.fired_projectiles[i]
+                current_proj.active = True
+                current_proj.set_direction(fire_direction_vector)
+                current_proj.set_position(self.rect.center)
+                self.fire_delay_remaining =  max(1, math.floor(60 - ENEMY_RATE_OF_FIRE))
+        else:
+            self.fire_delay_remaining -= 1
         
 
- 
-      def draw(self, surface):
+    def draw(self, surface):
         surface.blit(self.surf, self.rect) 
  
  
@@ -102,7 +130,7 @@ class Player(pygame.sprite.Sprite):
         self.surf.fill((128,255,40))
         self.rect = pygame.Rect((20, 50), (PLAYER_SIZE, PLAYER_SIZE))
         self.rect.center = (160, 520)
-        self.movement_speed = 5
+        self.movement_speed = PLAYER_MOVEMENT_SPEED
         self.fire_delay_remaining = 0
         self.proj_count = max(math.ceil((PLAYER_PROJECTILE_LIFETIME * PLAYER_RATE_OF_FIRE) / 200), 1)
         self.fired_projectiles = []
@@ -193,24 +221,42 @@ class Projectile(pygame.sprite.Sprite):
             self.active = False
             self.active_time = 0
 
+    def check_collision(self, other):
+        return self.rect.colliderect(other.rect)    
+
 P1 = Player()
-E1 = Enemy(P1, 3)
+E1 = Enemy(P1, ENEMY_SPEED)
 i = 0
-while True:     
+hit = False
+while True:
     for event in pygame.event.get():              
         if event.type == QUIT:
             pygame.quit()
             sys.exit()
-    P1.update()
-    E1.move()
-     
-    DISPLAYSURF.fill(WHITE)
-    P1.draw(DISPLAYSURF)
-    E1.draw(DISPLAYSURF)
-    for p in  P1.fired_projectiles:
-        if p.active:
-            p.update()
-            p.draw(DISPLAYSURF)
-         
-    pygame.display.update()
-    FramePerSec.tick(FPS)
+    if not hit:
+        P1.update()
+        E1.move()
+        
+        DISPLAYSURF.fill(WHITE)
+        P1.draw(DISPLAYSURF)
+        E1.draw(DISPLAYSURF)
+        for p in  P1.fired_projectiles:
+            if p.active:
+                p.update()
+                if p.check_collision(E1):
+                    print("Yay?")
+                    hit = True
+                    break
+                p.draw(DISPLAYSURF)
+
+        for p in  E1.fired_projectiles:
+            if p.active:
+                p.update()
+                if p.check_collision(P1):
+                    print("The player got hit, rekt")
+                    hit = True
+                    break
+                p.draw(DISPLAYSURF)
+            
+        pygame.display.update()
+        FramePerSec.tick(FPS)
