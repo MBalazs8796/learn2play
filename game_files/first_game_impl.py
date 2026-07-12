@@ -2,6 +2,10 @@ import pygame, sys
 from pygame.locals import *
 import random
 import math
+import json
+import os
+
+import datetime
 
 from itertools import compress
  
@@ -38,7 +42,8 @@ PROJECTILE_SIZE = 5
 DISPLAYSURF = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 DISPLAYSURF.fill(WHITE)
 pygame.display.set_caption("Game")
- 
+
+SAVE_DIR = './saves'
  
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, player, movement_speed):
@@ -145,34 +150,45 @@ class Player(pygame.sprite.Sprite):
         return self.rect.center
 
     def update(self):
+        input_as_string = ''
+
         pressed_keys = pygame.key.get_pressed()
         movement_vector = pygame.Vector2()
         if pressed_keys[K_w]:
             if self.rect.top > 0:
                 movement_vector.y += -1
+            input_as_string += 'w'
         if pressed_keys[K_s]:
             if self.rect.bottom < SCREEN_HEIGHT:
                 movement_vector.y += 1
+            input_as_string += 's'
         if pressed_keys[K_a]:
             if self.rect.left > 0:
                  movement_vector.x += -1
+            input_as_string += 'a'
         if pressed_keys[K_d]:
             if self.rect.right < SCREEN_WIDTH:        
                 movement_vector.x += 1
+            input_as_string += 'd'
 
         self.rect.move_ip(movement_vector * self.movement_speed)
 
+        input_as_string += '_'
 
         if self.fire_delay_remaining <= 0:
             fire_direction_vector = pygame.Vector2()
             if pressed_keys[K_UP]:
                 fire_direction_vector.y += -1
+                input_as_string += 'u'
             if pressed_keys[K_DOWN]:
                 fire_direction_vector.y += 1
+                input_as_string += 'd'
             if pressed_keys[K_LEFT]:
                 fire_direction_vector.x += -1
+                input_as_string += 'l'
             if pressed_keys[K_RIGHT]:
                 fire_direction_vector.x += 1
+                input_as_string += 'r'
             if fire_direction_vector.x != 0 or fire_direction_vector.y != 0:
                 i = 0
                 while  i < self.proj_count and self.fired_projectiles[i].active:
@@ -185,6 +201,7 @@ class Player(pygame.sprite.Sprite):
                     self.fire_delay_remaining =  max(1, math.floor(60 - PLAYER_RATE_OF_FIRE))
         else:
             self.fire_delay_remaining -= 1
+        return input_as_string
  
     def draw(self, surface):
         surface.blit(self.surf, self.rect)     
@@ -228,13 +245,23 @@ P1 = Player()
 E1 = Enemy(P1, ENEMY_SPEED)
 i = 0
 hit = False
+win = False
+input_save = list()
+
+if not os.path.isdir(SAVE_DIR):
+    os.mkdir(SAVE_DIR)
+    os.mkdir(f'{SAVE_DIR}/win')
+    os.mkdir(f'{SAVE_DIR}/loss')
+
 while True:
-    for event in pygame.event.get():              
+    for event in pygame.event.get():
         if event.type == QUIT:
+            with open(f'{SAVE_DIR}/{("win" if win else "loss")}/game_save_{str(datetime.datetime.now()).replace("-", "_").replace(" ", "_").replace(":", "").replace(".", "")}.json', 'w', encoding='utf8') as fp:
+                json.dump(input_save, fp)       
             pygame.quit()
             sys.exit()
     if not hit:
-        P1.update()
+        input_save.append(P1.update())
         E1.move()
         
         DISPLAYSURF.fill(WHITE)
@@ -246,6 +273,7 @@ while True:
                 if p.check_collision(E1):
                     print("Yay?")
                     hit = True
+                    win = True
                     break
                 p.draw(DISPLAYSURF)
 
