@@ -51,7 +51,7 @@ class Enemy(pygame.sprite.Sprite):
             x2, y2 = v2
             return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-        def get_shit_towards_thing(thing):
+        def get_shift_towards_thing(thing):
             other_pos = thing.get_position()
             shift_x = other_pos[0] - self.rect.center[0]
             shift_x = math.copysign(min(abs(shift_x), self.speed), shift_x)
@@ -61,7 +61,7 @@ class Enemy(pygame.sprite.Sprite):
 
         if not any([x.active for x in self.target_player.fired_projectiles]):
             # move towards the player
-            shift = get_shit_towards_thing(self.target_player)
+            shift = get_shift_towards_thing(self.target_player)
         else:
             #move away from the closest projectile
             min_distance = 9999999
@@ -75,8 +75,18 @@ class Enemy(pygame.sprite.Sprite):
                     index = i
             if index == -1:
                 raise Exception("Minimum distance calculation errored")
-            shift_x, shift_y = get_shit_towards_thing(self.target_player.fired_projectiles[index])
-            shift = shift_x * -1, shift_y * -1
+            shift_x, shift_y = get_shift_towards_thing(self.target_player.fired_projectiles[index])
+            shift = shift_y, shift_x * -1 # dodge left, cuz vector is rotated 90 degrees
+
+        shift_x, shift_y = shift
+        if self.rect.top <= 0:
+            shift = shift_x, 1
+        elif self.rect.bottom > SCREEN_HEIGHT:
+            shift = shift_x, -1
+        if self.rect.left < 0:
+            shift = 1, shift_y
+        elif self.rect.right > SCREEN_WIDTH:
+            shift = -1, shift_y
         self.rect.move_ip(shift)
         
 
